@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Shield, AlertCircle } from 'lucide-react';
+// import { Shield } from 'lucide-react'; // Shield is no longer used
+import { AlertCircle } from 'lucide-react';
+
+// Use a placeholder image path for the right column
+const MARKETING_IMAGE_URL = 'https://images.unsplash.com/photo-1593504049359-74330189a345?fit=crop&w=1400&h=1800&q=80';
 
 export function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -22,96 +26,138 @@ export function Auth() {
         await signIn(email, password);
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      // In a real app, you'd check for specific error codes
+      setError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center px-4">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
-            <Shield className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">AccessFix</h1>
-          <p className="text-slate-600">Automated accessibility scanning and PR generation</p>
-        </div>
+    // Outer container: Full height, flex for two columns, no horizontal padding
+    <div className="h-screen flex">
 
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="flex gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => setIsSignUp(false)}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
-                !isSignUp
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsSignUp(true)}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
-                isSignUp
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Sign Up
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
-                placeholder="you@example.com"
+      {/* LEFT COLUMN: AUTH FORM */}
+      <div className="flex-1 flex items-center justify-center p-8 lg:p-12 bg-[#ccccc3] z-10 relative">
+        <div className="max-w-md w-full relative">
+          
+          {/* LOGO & TITLE */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-24 h-24 bg-white rounded-2xl mb-4 shadow-md">
+              <img 
+                src="src/assets/AccessFixLogo.png" 
+                alt="AccessFix Logo" 
+                className="w-24 h-24 object-contain rounded-lg" 
               />
             </div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Welcome to AccessFix</h1>
+            <p className="text-slate-600">Securely access your automated accessibility dashboard.</p>
+          </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
-                placeholder="••••••••"
-              />
+          {/* FORM CARD */}
+          <div className="bg-[#9ba3a5] rounded-2xl shadow-xl p-8 border border-slate-400">
+            
+            <div className="flex gap-2 mb-6">
+              <button
+                type="button"
+                onClick={() => setIsSignUp(false)}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                  !isSignUp
+                    ? 'bg-[#a0bac1] hover:bg-[#83999e] text-white shadow-md'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSignUp(true)}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                  isSignUp
+                    ? 'bg-[#a0bac1] text-white shadow-md'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Sign Up
+              </button>
             </div>
 
-            {error && (
-              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-800">{error}</p>
+            {/* AUTH FORM */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
+                  placeholder="name@company.com"
+                />
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Processing...' : isSignUp ? 'Create Account' : 'Sign In'}
-            </button>
-          </form>
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
+                  placeholder="minimum 6 characters"
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#a0bac1] text-white py-2.5 px-4 rounded-lg font-medium hover:bg-[#7f949a] focus:ring-4 focus:ring-[#a0bac1] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#a0bac1]/30"
+              >
+                {loading ? 'Processing...' : isSignUp ? 'Create Account' : 'Sign In to Dashboard'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT COLUMN: LARGE MARKETING IMAGE */}
+      {/* Hides on small/medium screens (hidden), takes half the screen on large (lg:block lg:w-1/2) */}
+      <div className="hidden lg:block lg:w-1/2 relative">
+        <img 
+          src={MARKETING_IMAGE_URL} 
+          alt="Abstract representation of code accessibility" 
+          className="w-full h-full object-cover"
+        />
+        {/* Dark overlay for contrast */}
+        <div className="absolute inset-0 bg-slate-900 bg-opacity-60 flex items-end p-12">
+          {/* Copy-Ready Marketing Text */}
+          <div>
+            <blockquote className="text-white text-3xl font-extrabold leading-snug mb-6">
+              "Build a web that works for everyone. <span className="text-blue-300">Automated accessibility</span>, zero friction."
+            </blockquote>
+            <p className="text-slate-300 text-lg font-medium">
+              AccessFix seamlessly integrates into your CI/CD pipeline, catching compliance issues before they ever hit production.
+            </p>
+            <div className="mt-6">
+              <span className="text-sm font-semibold text-blue-400 uppercase tracking-wider">
+                AccessFix | Automated Compliance
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
