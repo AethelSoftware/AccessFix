@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { AlertCircle } from 'lucide-react';
 
 // Use a placeholder image path for the right column
-const MARKETING_IMAGE_URL = 'https://images.unsplash.com/photo-1593504049359-74330189a345?fit=crop&w=1400&h=1800&q=80';
+const MARKETING_IMAGE_URL = 'src/assets/pizza.jpeg';
 
 export function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
