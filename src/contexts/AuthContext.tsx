@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User } from '@supabase/supabase-js';
+import { User, AuthChangeEvent } from '@supabase/supabase-js'; // Added AuthChangeEvent for type safety
 import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
@@ -17,19 +17,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 1. Check for current session on load
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        setUser(session?.user ?? null);
-      })();
+    // 2. Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
+      
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          setUser(session?.user ?? null);
+      } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+      }
+      
+      // Ensure loading state is turned off after the initial session check or change
+      if (loading) {
+        setLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, []); // loading state added to dependencies to handle initial load logic once
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -38,7 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({ email, password });
+    
     if (error) throw error;
+    
+
   };
 
   const signOut = async () => {

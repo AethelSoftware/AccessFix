@@ -1,10 +1,44 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 // import { Shield } from 'lucide-react'; // Shield is no longer used
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Mail, ArrowLeft } from 'lucide-react'; // Added Mail and ArrowLeft icons
 
 // Use a placeholder image path for the right column
 const MARKETING_IMAGE_URL = 'src/assets/pizza.jpeg';
+
+// --- NEW INTERFACE FOR PROPS ---
+interface EmailConfirmationProps {
+  email: string;
+  resetView: () => void; // A function that takes no arguments and returns nothing
+}
+// ------------------------------
+
+// --- NEW COMPONENT: EmailConfirmation ---
+// Applied the interface to the component's props
+function EmailConfirmation({ email, resetView }: EmailConfirmationProps) {
+  return (
+    <div className="flex-1 flex items-center justify-center p-8 lg:p-12 bg-[#ccccc3] z-10 relative">
+      <div className="max-w-md w-full relative text-center">
+        <div className="bg-[#9ba3a5] rounded-2xl shadow-xl p-8 border border-slate-400">
+          <Mail className="w-16 h-16 text-[#a0bac1] mx-auto mb-6" />
+          <h2 className="text-2xl font-bold text-white mb-4">Check Your Email!</h2>
+          <p className="text-white mb-6">
+            We've sent a <span className='font-bold'>verification link</span> to <span className="font-semibold text-slate-900 break-all">{email}</span>. Please click the link to confirm your account and sign in.
+          </p>
+          <button
+            onClick={resetView}
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Sign In
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// ----------------------------------------
+
 
 export function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -12,7 +46,14 @@ export function Auth() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const { signIn, signUp } = useAuth();
+
+  const resetAuthView = () => {
+    setShowConfirmation(false);
+    setIsSignUp(false);
+    setError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,17 +63,57 @@ export function Auth() {
     try {
       if (isSignUp) {
         await signUp(email, password);
+        // ON SUCCESSFUL SIGN UP, SWITCH TO CONFIRMATION VIEW
+        setShowConfirmation(true); 
       } else {
         await signIn(email, password);
+        // On successful sign in, the user state is updated by AuthProvider, 
+        // and the main app redirects them.
       }
     } catch (err: any) {
       // In a real app, you'd check for specific error codes
+      // NOTE: Supabase sign-up might throw an error if the user already exists, 
+      // but otherwise, it typically succeeds quickly, leading to the confirmation view.
       setError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
+  // If showConfirmation is true, render the confirmation message instead of the form
+  if (showConfirmation) {
+    return (
+      <div className="h-screen flex">
+        {/* EmailConfirmation component now receives typed props */}
+        <EmailConfirmation email={email} resetView={resetAuthView} /> 
+        {/* Right Column remains the same */}
+        <div className="hidden lg:block lg:w-1/2 relative">
+          <img 
+            src={MARKETING_IMAGE_URL} 
+            alt="Abstract representation of code accessibility" 
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-slate-900 bg-opacity-60 flex items-end p-12">
+            <div>
+              <blockquote className="text-white text-3xl font-extrabold leading-snug mb-6">
+                "Build a web that works for everyone. <span className="text-blue-300">Automated accessibility</span>, zero friction."
+              </blockquote>
+              <p className="text-slate-300 text-lg font-medium">
+                AccessFix seamlessly integrates into your CI/CD pipeline, catching compliance issues before they ever hit production.
+              </p>
+              <div className="mt-6">
+                <span className="text-sm font-semibold text-blue-400 uppercase tracking-wider">
+                  AccessFix | Automated Compliance
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Original Auth Form View
   return (
     // Outer container: Full height, flex for two columns, no horizontal padding
     <div className="h-screen flex">
@@ -135,7 +216,6 @@ export function Auth() {
       </div>
 
       {/* RIGHT COLUMN: LARGE MARKETING IMAGE */}
-      {/* Hides on small/medium screens (hidden), takes half the screen on large (lg:block lg:w-1/2) */}
       <div className="hidden lg:block lg:w-1/2 relative">
         <img 
           src={MARKETING_IMAGE_URL} 
