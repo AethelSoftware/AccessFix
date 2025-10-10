@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { AlertCircle, Mail, ArrowLeft } from 'lucide-react'; // Added Mail and ArrowLeft icons
 
 // Use a placeholder image path for the right column
-const MARKETING_IMAGE_URL = 'src/assets/pizza.jpeg';
+const MARKETING_IMAGE_URL = '/assets/pizza.jpeg';
 
 // --- NEW INTERFACE FOR PROPS ---
 interface EmailConfirmationProps {
@@ -126,7 +126,7 @@ export function Auth() {
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-24 h-24 bg-white rounded-2xl mb-4 shadow-md">
               <img 
-                src="src/assets/AccessFixLogo.png" 
+                src="/assets/AccessFixLogo.png" 
                 alt="AccessFix Logo" 
                 className="w-24 h-24 object-contain rounded-lg" 
               />

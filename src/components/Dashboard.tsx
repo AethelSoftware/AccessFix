@@ -56,7 +56,7 @@ export function Dashboard() {
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl shadow-md">
                 <img
-                  src="src/assets/AccessFixLogo.png"
+                  src="/assets/AccessFixLogo.png"
                   alt="AccessFix Logo"
                   className="w-20 h-20 object-contain rounded-lg"
                 />
