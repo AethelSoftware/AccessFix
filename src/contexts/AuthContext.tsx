@@ -1,5 +1,6 @@
+// src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, AuthChangeEvent } from '@supabase/supabase-js'; // Added AuthChangeEvent for type safety
+import { User, AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
@@ -8,6 +9,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  signInWithGitHub: () => Promise<void>; // ✅ New function
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,29 +19,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Check for current session on load
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // 2. Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
-      
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, session) => {
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
           setUser(session?.user ?? null);
-      } else if (event === 'SIGNED_OUT') {
+        } else if (event === 'SIGNED_OUT') {
           setUser(null);
+        }
+
+        if (loading) setLoading(false);
       }
-      
-      // Ensure loading state is turned off after the initial session check or change
-      if (loading) {
-        setLoading(false);
-      }
-    });
+    );
 
     return () => subscription.unsubscribe();
-  }, []); // loading state added to dependencies to handle initial load logic once
+  }, []);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -48,10 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({ email, password });
-    
     if (error) throw error;
-    
-
   };
 
   const signOut = async () => {
@@ -59,8 +54,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
+  // ✅ GitHub OAuth Sign-in
+  const signInWithGitHub = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: window.location.origin, // redirect back to app
+        scopes: 'read:user repo', // optional: allow repo access for scanning later
+      },
+    });
+    if (error) throw error;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, signInWithGitHub }}>
       {children}
     </AuthContext.Provider>
   );
@@ -68,8 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }
