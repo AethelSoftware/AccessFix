@@ -1,14 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { Octokit } from "npm:octokit@3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Github-Token",
 };
 
 interface ScanRequest {
-  scanType: 'url' | 'file';
+  scanType: 'url' | 'file' | 'github';
   targetUrl?: string;
   htmlContent?: string;
   name: string;
@@ -26,6 +27,7 @@ interface AccessibilityIssue {
   codeSnippet?: string;
   fixedCode?: string;
   wcagCriteria?: string;
+  filePath?: string;
 }
 
 function scanHTML(html: string): AccessibilityIssue[] {
@@ -36,7 +38,7 @@ function scanHTML(html: string): AccessibilityIssue[] {
     const lineNum = index + 1;
     const trimmedLine = line.trim();
 
-    // Check for images without alt text
+    // --- Accessibility Checks ---
     if (/<img(?![^>]*alt=)[^>]*>/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<img[^>]*>/i);
       if (match) {
@@ -54,7 +56,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for empty alt attributes on non-decorative images
     if (/<img[^>]*alt=""[^>]*src=[^>]*>/i.test(trimmedLine) || /<img[^>]*src=[^>]*alt=""[^>]*>/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<img[^>]*>/i);
       if (match) {
@@ -71,7 +72,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for form inputs without labels
     if (/<input(?![^>]*id=)[^>]*type=["']?(text|email|password|tel|number|search)["']?/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<input[^>]*>/i);
       if (match) {
@@ -89,7 +89,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for buttons without accessible text
     if (/<button[^>]*>\s*<\/button>/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<button[^>]*>\s*<\/button>/i);
       if (match) {
@@ -107,7 +106,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for missing heading hierarchy
     const h1Match = /<h1[^>]*>/i.test(html);
     if (/<h3[^>]*>/i.test(trimmedLine) && !h1Match) {
       issues.push({
@@ -121,7 +119,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       });
     }
 
-    // Check for links without text
     if (/<a[^>]*>\s*<\/a>/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<a[^>]*>\s*<\/a>/i);
       if (match) {
@@ -139,7 +136,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for generic link text
     if (/<a[^>]*>\s*(click here|read more|here|more)\s*<\/a>/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<a[^>]*>[^<]*<\/a>/i);
       if (match) {
@@ -156,7 +152,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for missing lang attribute
     if (/<html[^>]*>/i.test(trimmedLine) && !/<html[^>]*lang=/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<html[^>]*>/i);
       if (match) {
@@ -174,7 +169,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for tables without proper structure
     if (/<table[^>]*>/i.test(trimmedLine)) {
       const tableSection = html.substring(html.indexOf(trimmedLine));
       if (!/<th[^>]*>/i.test(tableSection)) {
@@ -190,7 +184,6 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    // Check for iframes without title
     if (/<iframe(?![^>]*title=)[^>]*>/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<iframe[^>]*>/i);
       if (match) {
@@ -212,40 +205,50 @@ function scanHTML(html: string): AccessibilityIssue[] {
   return issues;
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+// --- GitHub Repo Helper ---
+async function fetchRepoHTMLFiles(repoFullName: string, githubToken: string): Promise<{ path: string; content: string }[]> {
+  const [owner, repo] = repoFullName.split("/");
+  const octokit = new Octokit({ auth: githubToken });
+  const files: { path: string; content: string }[] = [];
+
+  async function recurse(path = "") {
+    const { data } = await octokit.rest.repos.getContent({ owner, repo, path });
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (item.type === "file" && item.name.endsWith(".html")) {
+          const file = await octokit.rest.repos.getContent({ owner, repo, path: item.path });
+          const content = atob((file.data as any).content);
+          files.push({ path: item.path, content });
+        } else if (item.type === "dir") {
+          await recurse(item.path);
+        }
+      }
+    }
   }
+
+  await recurse("");
+  return files;
+}
+
+// --- Main Function ---
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS")
+    return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
-    // Get authenticated user
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
+    if (authError || !user)
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
     const { scanType, targetUrl, htmlContent, name, githubRepo }: ScanRequest = await req.json();
+    const githubToken = req.headers.get("X-Github-Token") || "";
 
-    // Create scan record
     const { data: scan, error: scanError } = await supabaseClient
       .from('scans')
       .insert({
@@ -253,50 +256,32 @@ Deno.serve(async (req: Request) => {
         name,
         scan_type: scanType,
         target_url: targetUrl,
-        file_name: scanType === 'file' ? name : null,
         github_repo: githubRepo,
         status: 'processing'
       })
       .select()
       .single();
 
-    if (scanError) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to create scan', details: scanError }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
+    if (scanError) throw scanError;
 
-    let html = htmlContent || '';
+    let issues: AccessibilityIssue[] = [];
 
-    // Fetch HTML from URL if needed
     if (scanType === 'url' && targetUrl) {
-      try {
-        const response = await fetch(targetUrl);
-        html = await response.text();
-      } catch (error) {
-        await supabaseClient
-          .from('scans')
-          .update({ status: 'failed' })
-          .eq('id', scan.id);
+      const res = await fetch(targetUrl);
+      const html = await res.text();
+      issues = scanHTML(html);
 
-        return new Response(
-          JSON.stringify({ error: 'Failed to fetch URL', details: error.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+    } else if (scanType === 'file' && htmlContent) {
+      issues = scanHTML(htmlContent);
+
+    } else if (scanType === 'github' && githubRepo && githubToken) {
+      const files = await fetchRepoHTMLFiles(githubRepo, githubToken);
+      for (const file of files) {
+        const fileIssues = scanHTML(file.content).map(i => ({ ...i, filePath: file.path }));
+        issues.push(...fileIssues);
       }
     }
 
-    // Scan HTML for accessibility issues
-    const issues = scanHTML(html);
-
-    // Insert issues into database
     if (issues.length > 0) {
       const issueRecords = issues.map(issue => ({
         scan_id: scan.id,
@@ -309,25 +294,17 @@ Deno.serve(async (req: Request) => {
         recommended_fix: issue.recommendedFix,
         code_snippet: issue.codeSnippet,
         fixed_code: issue.fixedCode,
-        wcag_criteria: issue.wcagCriteria
+        wcag_criteria: issue.wcagCriteria,
+        file_path: issue.filePath
       }));
-
-      const { error: issuesError } = await supabaseClient
-        .from('issues')
-        .insert(issueRecords);
-
-      if (issuesError) {
-        console.error('Error inserting issues:', issuesError);
-      }
+      await supabaseClient.from('issues').insert(issueRecords);
     }
 
-    // Count issues by severity
     const criticalCount = issues.filter(i => i.severity === 'critical').length;
     const warningCount = issues.filter(i => i.severity === 'warning').length;
     const infoCount = issues.filter(i => i.severity === 'info').length;
 
-    // Update scan with results
-    const { data: updatedScan, error: updateError } = await supabaseClient
+    const { data: updatedScan } = await supabaseClient
       .from('scans')
       .update({
         status: 'completed',
@@ -341,27 +318,15 @@ Deno.serve(async (req: Request) => {
       .select()
       .single();
 
-    if (updateError) {
-      console.error('Error updating scan:', updateError);
-    }
+    return new Response(JSON.stringify({ scan: updatedScan || scan, issues }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
-    return new Response(
-      JSON.stringify({
-        scan: updatedScan || scan,
-        issues: issues
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
   } catch (error) {
-    console.error('Error:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    console.error("Error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });
