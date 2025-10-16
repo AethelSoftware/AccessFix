@@ -5,38 +5,50 @@ import { GeneratePRModal } from './GeneratePRModal';
 
 interface ScanDetailsProps {
   scan: Scan;
-  issues: Issue[];
+  issues?: Issue[];
   onScanUpdated: () => void;
 }
 
 export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: ScanDetailsProps) {
-  const [issues, setIssues] = useState<Issue[]>(initialIssues || []);
-  const [loading, setLoading] = useState(!initialIssues);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [showPRModal, setShowPRModal] = useState(false);
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
 
+  // Load issues whenever scan changes OR initialIssues are provided
   useEffect(() => {
-    // if issues are not passed, load them
-    if (!initialIssues) {
-      loadIssues();
+    console.log('ScanDetails useEffect triggered', { scanId: scan.id, hasInitialIssues: !!initialIssues });
+    
+    if (initialIssues && initialIssues.length > 0) {
+      // Use provided issues (from new scan)
+      console.log('Using provided issues:', initialIssues.length);
+      setIssues(initialIssues);
+      setSelectedIssue(initialIssues[0]);
+      setLoading(false);
     } else {
-      if (initialIssues.length > 0) {
-        setSelectedIssue(initialIssues[0]);
-      }
+      // Load from database (existing scan or reload)
+      console.log('Loading issues from database for scan:', scan.id);
+      loadIssues();
     }
-  }, [scan.id, initialIssues]);
+  }, [scan.id]);
 
   const loadIssues = async () => {
     setLoading(true);
     try {
+      console.log('Fetching issues from database...');
       const { data, error } = await supabase
         .from('issues')
         .select('*')
         .eq('scan_id', scan.id)
         .order('severity', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading issues:', error);
+        throw error;
+      }
+      
+      console.log('Loaded issues from DB:', data?.length || 0);
       setIssues(data || []);
       if (data && data.length > 0) {
         setSelectedIssue(data[0]);
@@ -78,6 +90,7 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="text-sm text-slate-500 mt-4">Loading issues...</p>
       </div>
     );
   }
@@ -205,7 +218,9 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
 
         {filteredIssues.length === 0 ? (
           <div className="p-12 text-center">
-            <p className="text-slate-600">No issues found in this category</p>
+            <p className="text-slate-600">
+              {issues.length === 0 ? 'No issues found! 🎉' : 'No issues found in this category'}
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-slate-200">
@@ -217,10 +232,10 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
                   selectedIssue?.id === issue.id ? 'bg-blue-50' : ''
                 }`}
               >
-                <div key={issue.id} className="flex items-start gap-4">
+                <div className="flex items-start gap-4">
                   {getSeverityIcon(issue.severity)}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <h4 className="font-semibold text-slate-900">{issue.title}</h4>
                       <span className={`px-2 py-1 rounded text-xs font-medium border ${getSeverityBadge(issue.severity)}`}>
                         {issue.severity}

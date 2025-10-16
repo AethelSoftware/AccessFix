@@ -36,6 +36,7 @@ export function Dashboard() {
   }, []);
 
   const handleScanCreated = (scan: Scan, issues: Issue[]) => {
+    console.log('New scan created with issues:', issues.length);
     setScans([scan, ...scans]);
     setIssuesByScan(prev => ({ ...prev, [scan.id]: issues }));
     setSelectedScan(scan);
