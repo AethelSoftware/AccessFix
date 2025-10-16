@@ -2,8 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Octokit } from "npm:octokit@3";
 
+// --- CORS Configuration ---
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  // Ensure protocol is included for localhost
+  "Access-Control-Allow-Origin": "http://localhost:5173", 
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Github-Token",
 };
@@ -30,6 +32,7 @@ interface AccessibilityIssue {
   filePath?: string;
 }
 
+// --- HTML Scanning Logic (No change needed) ---
 function scanHTML(html: string): AccessibilityIssue[] {
   const issues: AccessibilityIssue[] = [];
   const lines = html.split('\n');
@@ -72,7 +75,7 @@ function scanHTML(html: string): AccessibilityIssue[] {
       }
     }
 
-    if (/<input(?![^>]*id=)[^>]*type=["']?(text|email|password|tel|number|search)["']?/i.test(trimmedLine)) {
+    if (/<input(?![^>]*id=)[^>]*type=["\']?(text|email|password|tel|number|search)["\']?/i.test(trimmedLine)) {
       const match = trimmedLine.match(/<input[^>]*>/i);
       if (match) {
         issues.push({
@@ -205,7 +208,7 @@ function scanHTML(html: string): AccessibilityIssue[] {
   return issues;
 }
 
-// --- GitHub Repo Helper ---
+// --- GitHub Repo Helper (No change needed) ---
 async function fetchRepoHTMLFiles(repoFullName: string, githubToken: string): Promise<{ path: string; content: string }[]> {
   const [owner, repo] = repoFullName.split("/");
   const octokit = new Octokit({ auth: githubToken });
@@ -230,12 +233,45 @@ async function fetchRepoHTMLFiles(repoFullName: string, githubToken: string): Pr
   return files;
 }
 
-// --- Main Function ---
+// --- Main Function with Final Fixes ---
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS")
+  // 1. Handle OPTIONS preflight request immediately
+  if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
+  }
 
+  // 2. Wrap all subsequent execution in a single try/catch
   try {
+    
+    // --- Body Parsing with Strict Checks ---
+    let requestData: ScanRequest;
+    const contentType = req.headers.get("content-type") || "";
+
+    // 3. CRITICAL FIX: Ensure method is POST and Content-Type is application/json 
+    // before attempting to read the body as JSON.
+    if (req.method !== "POST" || !contentType.includes("application/json")) {
+        return new Response(
+            JSON.stringify({ error: `Method ${req.method} not allowed or missing 'application/json' Content-Type.` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+    }
+    
+    // Safely attempt to parse the JSON body to catch the SyntaxError
+    try {
+        requestData = await req.json() as ScanRequest;
+    } catch (e) {
+        console.error("Failed to parse request body (likely malformed JSON):", e);
+        return new Response(
+            JSON.stringify({ error: "Invalid or malformed JSON request body." }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+    }
+    
+    // Deconstruct data from the safely parsed request body
+    const { scanType, targetUrl, htmlContent, name, githubRepo } = requestData;
+    const githubToken = req.headers.get("X-Github-Token") || "";
+
+    // --- Authentication and Client Initialization ---
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -243,12 +279,11 @@ Deno.serve(async (req: Request) => {
     );
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user)
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
-
-    const { scanType, targetUrl, htmlContent, name, githubRepo }: ScanRequest = await req.json();
-    const githubToken = req.headers.get("X-Github-Token") || "";
-
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    
+    // --- Database Insertion (Scan Record) ---
     const { data: scan, error: scanError } = await supabaseClient
       .from('scans')
       .insert({
@@ -264,6 +299,7 @@ Deno.serve(async (req: Request) => {
 
     if (scanError) throw scanError;
 
+    // --- Scanning Logic ---
     let issues: AccessibilityIssue[] = [];
 
     if (scanType === 'url' && targetUrl) {
@@ -282,6 +318,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // --- Database Insertion (Issue Records) ---
     if (issues.length > 0) {
       const issueRecords = issues.map(issue => ({
         scan_id: scan.id,
@@ -300,6 +337,7 @@ Deno.serve(async (req: Request) => {
       await supabaseClient.from('issues').insert(issueRecords);
     }
 
+    // --- Database Update (Final Scan Status) ---
     const criticalCount = issues.filter(i => i.severity === 'critical').length;
     const warningCount = issues.filter(i => i.severity === 'warning').length;
     const infoCount = issues.filter(i => i.severity === 'info').length;
@@ -318,12 +356,14 @@ Deno.serve(async (req: Request) => {
       .select()
       .single();
 
+    // --- Successful Response ---
     return new Response(JSON.stringify({ scan: updatedScan || scan, issues }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error("Error:", error);
+    // This general catch ensures that even unhandled exceptions return CORS headers
+    console.error("Critical Error in Scan Function:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

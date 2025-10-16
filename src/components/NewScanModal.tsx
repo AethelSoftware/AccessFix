@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { X, Upload, Link as LinkIcon, GitBranch, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { Scan, supabase } from '../lib/supabase';
+import { Issue, Scan, supabase } from '../lib/supabase';
 
 interface NewScanModalProps {
   onClose: () => void;
-  onScanCreated: (scan: Scan) => void;
+  onScanCreated: (scan: Scan, issues: Issue[]) => void;
 }
 
 export function NewScanModal({ onClose, onScanCreated }: NewScanModalProps) {
@@ -61,6 +61,7 @@ export function NewScanModal({ onClose, onScanCreated }: NewScanModalProps) {
         headers: {
           'Authorization': `Bearer ${session?.access_token}`,
           'Content-Type': 'application/json',
+          'X-Github-Token': session?.provider_token || '',
         },
         body: JSON.stringify({
           scanType,
@@ -76,8 +77,8 @@ export function NewScanModal({ onClose, onScanCreated }: NewScanModalProps) {
         throw new Error(error.error || 'Failed to create scan');
       }
 
-      const { scan } = await response.json();
-      onScanCreated(scan);
+      const { scan, issues } = await response.json();
+      onScanCreated(scan, issues);
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {

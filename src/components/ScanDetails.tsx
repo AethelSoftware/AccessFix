@@ -5,21 +5,30 @@ import { GeneratePRModal } from './GeneratePRModal';
 
 interface ScanDetailsProps {
   scan: Scan;
+  issues: Issue[];
   onScanUpdated: () => void;
 }
 
-export function ScanDetails({ scan, onScanUpdated }: ScanDetailsProps) {
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [loading, setLoading] = useState(true);
+export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: ScanDetailsProps) {
+  const [issues, setIssues] = useState<Issue[]>(initialIssues || []);
+  const [loading, setLoading] = useState(!initialIssues);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [showPRModal, setShowPRModal] = useState(false);
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
 
   useEffect(() => {
-    loadIssues();
-  }, [scan.id]);
+    // if issues are not passed, load them
+    if (!initialIssues) {
+      loadIssues();
+    } else {
+      if (initialIssues.length > 0) {
+        setSelectedIssue(initialIssues[0]);
+      }
+    }
+  }, [scan.id, initialIssues]);
 
   const loadIssues = async () => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('issues')
@@ -208,7 +217,7 @@ export function ScanDetails({ scan, onScanUpdated }: ScanDetailsProps) {
                   selectedIssue?.id === issue.id ? 'bg-blue-50' : ''
                 }`}
               >
-                <div className="flex items-start gap-4">
+                <div key={issue.id} className="flex items-start gap-4">
                   {getSeverityIcon(issue.severity)}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">

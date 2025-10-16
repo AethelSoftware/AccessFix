@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Shield, Plus, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase, Scan } from '../lib/supabase';
+import { supabase, Scan, Issue } from '../lib/supabase';
 import { NewScanModal } from './NewScanModal';
 import { ScansList } from './ScansList';
 import { ScanDetails } from './ScanDetails';
+
 
 export function Dashboard() {
   const { user, signOut } = useAuth();
@@ -12,6 +13,7 @@ export function Dashboard() {
   const [selectedScan, setSelectedScan] = useState<Scan | null>(null);
   const [showNewScanModal, setShowNewScanModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [issuesByScan, setIssuesByScan] = useState<Record<string, Issue[]>>({});
 
   const loadScans = async () => {
     try {
@@ -33,8 +35,9 @@ export function Dashboard() {
     loadScans();
   }, []);
 
-  const handleScanCreated = (scan: Scan) => {
+  const handleScanCreated = (scan: Scan, issues: Issue[]) => {
     setScans([scan, ...scans]);
+    setIssuesByScan(prev => ({ ...prev, [scan.id]: issues }));
     setSelectedScan(scan);
     setShowNewScanModal(false);
   };
@@ -128,7 +131,11 @@ export function Dashboard() {
             </div>
             <div className="lg:col-span-2">
               {selectedScan ? (
-                <ScanDetails scan={selectedScan} onScanUpdated={loadScans} />
+                <ScanDetails
+                  scan={selectedScan}
+                  issues={issuesByScan[selectedScan.id]}
+                  onScanUpdated={loadScans}
+                />
               ) : (
                 <div className="rounded-lg border border-neutral-200 bg-white p-12 text-center shadow-sm">
                   <p className="text-sm text-neutral-500">Select a scan to view details</p>
