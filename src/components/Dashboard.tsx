@@ -36,10 +36,22 @@ export function Dashboard() {
   }, []);
 
   const handleScanCreated = (scan: Scan, issues: Issue[]) => {
-    console.log('New scan created with issues:', issues.length);
-    setScans([scan, ...scans]);
-    setIssuesByScan(prev => ({ ...prev, [scan.id]: issues }));
+    console.log('New scan created:', scan.id, 'with issues:', issues.length);
+    
+    // Add scan to list
+    setScans(prev => [scan, ...prev]);
+    
+    // Store issues immediately
+    setIssuesByScan(prev => {
+      const updated = { ...prev, [scan.id]: issues };
+      console.log('Updated issuesByScan:', updated);
+      return updated;
+    });
+    
+    // Select the new scan
     setSelectedScan(scan);
+    
+    // Close modal
     setShowNewScanModal(false);
   };
 
@@ -133,6 +145,7 @@ export function Dashboard() {
             <div className="lg:col-span-2">
               {selectedScan ? (
                 <ScanDetails
+                  key={selectedScan.id}
                   scan={selectedScan}
                   issues={issuesByScan[selectedScan.id]}
                   onScanUpdated={loadScans}

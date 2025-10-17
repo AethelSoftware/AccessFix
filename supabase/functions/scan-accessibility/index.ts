@@ -5,7 +5,7 @@ import { Octokit } from "npm:octokit@3";
 // --- CORS Configuration ---
 const corsHeaders = {
   // Ensure protocol is included for localhost
-  "Access-Control-Allow-Origin": "https://accessfix.vercel.app/", 
+  "Access-Control-Allow-Origin": "*", 
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Github-Token",
 };
