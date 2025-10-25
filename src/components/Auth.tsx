@@ -238,7 +238,7 @@ export function Auth() {
     'Seamless CI/CD integration',
     'GitHub Actions support',
     'Detailed, actionable reports',
-    'Progress tracking and analytics'
+    'Axe-core integration'
   ];
 
   const containerVariants = {

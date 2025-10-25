@@ -18,20 +18,36 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
 
   // Load issues whenever scan changes OR initialIssues are provided
   useEffect(() => {
-    console.log('ScanDetails useEffect triggered', { scanId: scan.id, hasInitialIssues: !!initialIssues });
+    console.log('ScanDetails useEffect triggered', { 
+      scanId: scan.id, 
+      hasInitialIssues: !!initialIssues,
+      initialIssuesLength: initialIssues?.length,
+      isArray: Array.isArray(initialIssues),
+      firstIssue: initialIssues?.[0]
+    });
     
-    if (initialIssues && initialIssues.length > 0) {
-      // Use provided issues (from new scan)
-      console.log('Using provided issues:', initialIssues.length);
+    // PRIORITY: Use initialIssues if provided (fresh scan)
+    if (Array.isArray(initialIssues)) {
+      console.log('✅ Using provided issues:', initialIssues.length, initialIssues);
       setIssues(initialIssues);
-      setSelectedIssue(initialIssues[0]);
+      if (initialIssues.length > 0) {
+        setSelectedIssue(initialIssues[0]);
+        console.log('✅ Set selected issue:', initialIssues[0]);
+      } else {
+        setSelectedIssue(null);
+      }
       setLoading(false);
     } else {
-      // Load from database (existing scan or reload)
-      console.log('Loading issues from database for scan:', scan.id);
+      // Load from database (existing scan)
+      console.log('📥 Loading issues from database for scan:', scan.id);
       loadIssues();
     }
-  }, [scan.id]);
+  }, [scan.id, initialIssues]);
+
+  // Debug: Log whenever issues state changes
+  useEffect(() => {
+    console.log('🔄 Issues state updated:', issues.length, 'issues');
+  }, [issues]); // ✅ Added initialIssues to dependencies
 
   const loadIssues = async () => {
     setLoading(true);
