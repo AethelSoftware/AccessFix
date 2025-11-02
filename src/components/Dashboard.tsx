@@ -97,11 +97,22 @@ export function Dashboard() {
     try {
       setGeneratingPdf(scanId);
       
+      console.log('Generating PDF for scan:', scanId);
+      
       const { data, error } = await supabase.functions.invoke('generate-pdf-report', {
         body: { scan_id: scanId }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw new Error(error.message || 'Failed to generate PDF');
+      }
+
+      if (!data) {
+        throw new Error('No response from PDF generation service');
+      }
+
+      console.log('PDF generated successfully:', data);
 
       // Update the scan with the new PDF URL and scores
       await loadScans();
@@ -117,10 +128,12 @@ export function Dashboard() {
         
         // Show success modal
         setShowPdfSuccessModal(true);
+      } else {
+        throw new Error('PDF URL not returned from server');
       }
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Error generating PDF report. Please try again.');
+      alert(`Error generating PDF report: ${error.message}. Please try again.`);
     } finally {
       setGeneratingPdf(null);
     }
