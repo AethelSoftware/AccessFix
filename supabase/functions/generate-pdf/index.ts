@@ -5,37 +5,96 @@ import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
+  "Access-Control-Max-Age": "86400",
 };
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { 
+      headers: corsHeaders,
+      status: 200 
+    });
   }
 
   try {
-    const { scan_id } = await req.json();
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    // Parse request body
+    let scan_id: string;
+    try {
+      const body = await req.json();
+      scan_id = body.scan_id;
+    } catch (parseError) {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON in request body" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
 
-    // 1. Fetch Scan and Issues
+    if (!scan_id) {
+      return new Response(
+        JSON.stringify({ error: "scan_id is required" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return new Response(
+        JSON.stringify({ error: "Supabase environment variables not configured" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        }
+      );
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 1. Fetch Scan
     const { data: scan, error: scanError } = await supabaseAdmin
       .from("scans")
       .select("*")
       .eq("id", scan_id)
       .single();
 
-    if (scanError) throw scanError;
+    if (scanError) {
+      console.error("Scan fetch error:", scanError);
+      return new Response(
+        JSON.stringify({ error: "Scan not found" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 404,
+        }
+      );
+    }
 
+    // 2. Fetch Issues
     const { data: issues, error: issuesError } = await supabaseAdmin
       .from("issues")
       .select("*")
       .eq("scan_id", scan_id)
       .order("severity", { ascending: false });
 
-    if (issuesError) throw issuesError;
+    if (issuesError) {
+      console.error("Issues fetch error:", issuesError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch issues" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        }
+      );
+    }
 
     // Calculate score if not provided
     const calculateAccessibilityScore = (issues: any[]) => {
@@ -65,7 +124,7 @@ serve(async (req) => {
       ? { rating: scan.rating, grade: scan.grade }
       : calculateAccessibilityScore(issues || []);
 
-    // 2. Create PDF
+    // 3. Create PDF
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage();
     const { width, height } = page.getSize();
@@ -350,10 +409,10 @@ serve(async (req) => {
       });
     }
 
-    // 3. Save PDF to buffer
+    // 4. Save PDF to buffer
     const pdfBytes = await pdfDoc.save();
 
-    // 4. Upload to Supabase Storage
+    // 5. Upload to Supabase Storage
     const filePath = `${scan.user_id}/${scan.id}.pdf`;
     const { error: storageError } = await supabaseAdmin.storage
       .from("reports")
@@ -362,14 +421,23 @@ serve(async (req) => {
         upsert: true,
       });
 
-    if (storageError) throw storageError;
+    if (storageError) {
+      console.error("Storage upload error:", storageError);
+      return new Response(
+        JSON.stringify({ error: "Failed to upload PDF to storage" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        }
+      );
+    }
 
-    // 5. Get public URL
+    // 6. Get public URL
     const { data: publicUrlData } = supabaseAdmin.storage
       .from("reports")
       .getPublicUrl(filePath);
 
-    // 6. Update scan with PDF URL
+    // 7. Update scan with PDF URL and scores
     const { error: updateError } = await supabaseAdmin
       .from("scans")
       .update({ 
@@ -383,7 +451,16 @@ serve(async (req) => {
       })
       .eq("id", scan_id);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error("Scan update error:", updateError);
+      return new Response(
+        JSON.stringify({ error: "Failed to update scan with PDF URL" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        }
+      );
+    }
 
     return new Response(JSON.stringify({ 
       pdf_report_url: publicUrlData.publicUrl,
@@ -395,10 +472,13 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error('PDF generation error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      }
+    );
   }
 });
 
