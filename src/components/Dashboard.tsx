@@ -6,11 +6,41 @@ import { NewScanModal } from './NewScanModal';
 import { ScansList } from './ScansList';
 import { ScanDetails } from './ScanDetails';
 
+// PDF Success Modal Component
+function PdfSuccessModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+            <Download className="h-6 w-6 text-green-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+            PDF Downloaded Successfully!
+          </h3>
+          <p className="text-slate-600 mb-6">
+            Your accessibility scan report has been downloaded to your browser.
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const { user, signOut } = useAuth();
   const [scans, setScans] = useState<Scan[]>([]);
   const [selectedScan, setSelectedScan] = useState<Scan | null>(null);
   const [showNewScanModal, setShowNewScanModal] = useState(false);
+  const [showPdfSuccessModal, setShowPdfSuccessModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [issuesByScan, setIssuesByScan] = useState<Record<string, Issue[]>>({});
   const [generatingPdf, setGeneratingPdf] = useState<string | null>(null);
@@ -73,12 +103,20 @@ export function Dashboard() {
 
       if (error) throw error;
 
-      // Update the scan with the new PDF URL
+      // Update the scan with the new PDF URL and scores
       await loadScans();
       
-      // Download the PDF
+      // Force download the PDF
       if (data.pdf_report_url) {
-        window.open(data.pdf_report_url, '_blank');
+        const link = document.createElement('a');
+        link.href = data.pdf_report_url;
+        link.download = `accessibility-scan-${scanId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Show success modal
+        setShowPdfSuccessModal(true);
       }
     } catch (error) {
       console.error('Error generating PDF:', error);
@@ -91,7 +129,13 @@ export function Dashboard() {
   const downloadPdfReport = (scan: Scan) => {
     if (scan.pdf_report_url) {
       // If PDF already exists, download it directly
-      window.open(scan.pdf_report_url, '_blank');
+      const link = document.createElement('a');
+      link.href = scan.pdf_report_url;
+      link.download = `accessibility-scan-${scan.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setShowPdfSuccessModal(true);
     } else {
       // Generate new PDF
       generatePdfReport(scan.id);
@@ -186,6 +230,7 @@ export function Dashboard() {
                   onScanUpdated={loadScans}
                   onDownloadPdf={() => downloadPdfReport(selectedScan)}
                   isGeneratingPdf={generatingPdf === selectedScan.id}
+                  onPdfSuccess={() => setShowPdfSuccessModal(true)}
                 />
               ) : (
                 <div className="rounded-lg border border-neutral-200 bg-white p-12 text-center shadow-sm">
@@ -197,13 +242,19 @@ export function Dashboard() {
         )}
       </main>
 
-      {/* Modal */}
+      {/* New Scan Modal */}
       {showNewScanModal && (
         <NewScanModal
           onClose={() => setShowNewScanModal(false)}
           onScanCreated={handleScanCreated}
         />
       )}
+
+      {/* PDF Success Modal */}
+      <PdfSuccessModal 
+        isOpen={showPdfSuccessModal} 
+        onClose={() => setShowPdfSuccessModal(false)} 
+      />
     </div>
   );
 }
