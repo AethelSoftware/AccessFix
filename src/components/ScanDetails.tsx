@@ -9,6 +9,7 @@ interface ScanDetailsProps {
   onScanUpdated: () => void;
   onDownloadPdf: () => void;
   isGeneratingPdf: boolean;
+  onPdfSuccess?: () => void;
 }
 
 export function ScanDetails({ 
@@ -16,13 +17,42 @@ export function ScanDetails({
   issues: initialIssues, 
   onScanUpdated, 
   onDownloadPdf, 
-  isGeneratingPdf 
+  isGeneratingPdf,
+  onPdfSuccess 
 }: ScanDetailsProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [showPRModal, setShowPRModal] = useState(false);
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
+
+  // Calculate score if not provided
+  const calculateAccessibilityScore = (issues: Issue[]) => {
+    if (issues.length === 0) return { rating: 100, grade: 'A' };
+    
+    const criticalCount = issues.filter(i => i.severity === 'critical').length;
+    const warningCount = issues.filter(i => i.severity === 'warning').length;
+    const infoCount = issues.filter(i => i.severity === 'info').length;
+    
+    let score = 100;
+    score -= criticalCount * 10;
+    score -= warningCount * 5;
+    score -= infoCount * 2;
+    
+    score = Math.max(0, Math.min(100, score));
+    
+    let grade = 'A';
+    if (score < 90) grade = 'B';
+    if (score < 80) grade = 'C';
+    if (score < 70) grade = 'D';
+    if (score < 60) grade = 'F';
+    
+    return { rating: Math.round(score), grade };
+  };
+
+  const scoreData = scan.rating && scan.grade 
+    ? { rating: scan.rating, grade: scan.grade }
+    : calculateAccessibilityScore(issues);
 
   // Load issues whenever scan changes OR initialIssues are provided
   useEffect(() => {
@@ -220,19 +250,25 @@ export function ScanDetails({
               <div>
                 <p className="text-sm text-blue-600 mb-1">Accessibility Score</p>
                 <p className="text-2xl font-bold text-blue-900">
-                  {scan.rating}/100 <span className="text-lg">({scan.grade})</span>
+                  {scoreData.rating}/100 <span className="text-lg">({scoreData.grade})</span>
                 </p>
               </div>
               {scan.pdf_report_url && (
-                <a
-                  href={scan.pdf_report_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = scan.pdf_report_url;
+                    link.download = `accessibility-scan-${scan.id}.pdf`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    onPdfSuccess?.();
+                  }}
                   className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                 >
                   <Download className="w-3 h-3" />
-                  View PDF
-                </a>
+                  Download PDF
+                </button>
               )}
             </div>
           </div>
