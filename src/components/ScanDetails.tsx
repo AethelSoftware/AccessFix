@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, AlertTriangle, Info, GitPullRequest, ExternalLink, Code } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, GitPullRequest, ExternalLink, Code, Download } from 'lucide-react';
 import { Scan, Issue, supabase } from '../lib/supabase';
 import { GeneratePRModal } from './GeneratePRModal';
 
@@ -7,9 +7,17 @@ interface ScanDetailsProps {
   scan: Scan;
   issues?: Issue[];
   onScanUpdated: () => void;
+  onDownloadPdf: () => void;
+  isGeneratingPdf: boolean;
 }
 
-export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: ScanDetailsProps) {
+export function ScanDetails({ 
+  scan, 
+  issues: initialIssues, 
+  onScanUpdated, 
+  onDownloadPdf, 
+  isGeneratingPdf 
+}: ScanDetailsProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
@@ -47,7 +55,7 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
   // Debug: Log whenever issues state changes
   useEffect(() => {
     console.log('🔄 Issues state updated:', issues.length, 'issues');
-  }, [issues]); // ✅ Added initialIssues to dependencies
+  }, [issues]);
 
   const loadIssues = async () => {
     setLoading(true);
@@ -84,6 +92,8 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
         return <AlertTriangle className="w-5 h-5 text-amber-600" />;
       case 'info':
         return <Info className="w-5 h-5 text-blue-600" />;
+      default:
+        return <Info className="w-5 h-5 text-slate-600" />;
     }
   };
 
@@ -95,6 +105,8 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
         return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'info':
         return 'bg-blue-100 text-blue-800 border-blue-200';
+      default:
+        return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
 
@@ -158,37 +170,75 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
                 )}
               </div>
             </div>
-            {scan.github_repo && issues.length > 0 && (
+            <div className="flex items-center gap-3">
+              {/* PDF Download Button */}
               <button
-                onClick={() => setShowPRModal(true)}
-                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                onClick={onDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 transition-colors shadow-sm"
               >
-                <GitPullRequest className="w-5 h-5" />
-                Generate PR
+                <Download className="w-4 h-4" />
+                {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
               </button>
-            )}
+
+              {/* Generate PR Button */}
+              {scan.github_repo && issues.length > 0 && (
+                <button
+                  onClick={() => setShowPRModal(true)}
+                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                >
+                  <GitPullRequest className="w-5 h-5" />
+                  Generate PR
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          {/* Scan Summary Cards */}
+          <div className="grid grid-cols-4 gap-4 mb-4">
             <div className="bg-slate-50 rounded-lg p-4">
               <p className="text-sm text-slate-600 mb-1">Total Issues</p>
-              <p className="text-2xl font-bold text-slate-900">{scan.total_issues}</p>
+              <p className="text-2xl font-bold text-slate-900">{scan.total_issues || issues.length}</p>
             </div>
             <div className="bg-red-50 rounded-lg p-4">
               <p className="text-sm text-red-600 mb-1">Critical</p>
-              <p className="text-2xl font-bold text-red-900">{scan.critical_count}</p>
+              <p className="text-2xl font-bold text-red-900">{scan.critical_count || issues.filter(i => i.severity === 'critical').length}</p>
             </div>
             <div className="bg-amber-50 rounded-lg p-4">
               <p className="text-sm text-amber-600 mb-1">Warnings</p>
-              <p className="text-2xl font-bold text-amber-900">{scan.warning_count}</p>
+              <p className="text-2xl font-bold text-amber-900">{scan.warning_count || issues.filter(i => i.severity === 'warning').length}</p>
             </div>
             <div className="bg-blue-50 rounded-lg p-4">
               <p className="text-sm text-blue-600 mb-1">Info</p>
-              <p className="text-2xl font-bold text-blue-900">{scan.info_count}</p>
+              <p className="text-2xl font-bold text-blue-900">{scan.info_count || issues.filter(i => i.severity === 'info').length}</p>
             </div>
           </div>
 
-          <div className="flex gap-2 mt-4">
+          {/* Score Card */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 mb-4 border border-blue-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-blue-600 mb-1">Accessibility Score</p>
+                <p className="text-2xl font-bold text-blue-900">
+                  {scan.rating}/100 <span className="text-lg">({scan.grade})</span>
+                </p>
+              </div>
+              {scan.pdf_report_url && (
+                <a
+                  href={scan.pdf_report_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  <Download className="w-3 h-3" />
+                  View PDF
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Filter Buttons */}
+          <div className="flex gap-2 mt-4 flex-wrap">
             <button
               onClick={() => setFilter('all')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -207,7 +257,7 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Critical ({scan.critical_count})
+              Critical ({scan.critical_count || issues.filter(i => i.severity === 'critical').length})
             </button>
             <button
               onClick={() => setFilter('warning')}
@@ -217,7 +267,7 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Warnings ({scan.warning_count})
+              Warnings ({scan.warning_count || issues.filter(i => i.severity === 'warning').length})
             </button>
             <button
               onClick={() => setFilter('info')}
@@ -227,11 +277,12 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Info ({scan.info_count})
+              Info ({scan.info_count || issues.filter(i => i.severity === 'info').length})
             </button>
           </div>
         </div>
 
+        {/* Issues List */}
         {filteredIssues.length === 0 ? (
           <div className="p-12 text-center">
             <p className="text-slate-600">
@@ -239,13 +290,12 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-200">
+          <div className="divide-y divide-slate-200 max-h-[600px] overflow-y-auto">
             {filteredIssues.map((issue) => (
-              <button
+              <div
                 key={issue.id}
-                onClick={() => setSelectedIssue(issue)}
-                className={`w-full p-6 text-left hover:bg-slate-50 transition-colors ${
-                  selectedIssue?.id === issue.id ? 'bg-blue-50' : ''
+                className={`p-6 transition-colors ${
+                  selectedIssue?.id === issue.id ? 'bg-blue-50' : 'hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -260,44 +310,61 @@ export function ScanDetails({ scan, issues: initialIssues, onScanUpdated }: Scan
                         {issue.category}
                       </span>
                     </div>
-                    <p className="text-sm text-slate-600 mb-2">{issue.description}</p>
-                    {issue.line_number && (
-                      <p className="text-xs text-slate-500">Line {issue.line_number}</p>
-                    )}
-                    {issue.wcag_criteria && (
-                      <p className="text-xs text-slate-500 mt-1">{issue.wcag_criteria}</p>
-                    )}
-
-                    <div className="mt-4">
-                      <p className="text-sm font-medium text-slate-900 mb-2">Recommended Fix:</p>
-                      <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg">{issue.recommended_fix}</p>
+                    
+                    <p className="text-sm text-slate-600 mb-3">{issue.description}</p>
+                    
+                    {/* WCAG Criteria and Line Number */}
+                    <div className="flex items-center gap-4 text-xs text-slate-500 mb-3">
+                      {issue.wcag_criteria && (
+                        <span>WCAG: {issue.wcag_criteria}</span>
+                      )}
+                      {issue.line_number && (
+                        <span>Line {issue.line_number}</span>
+                      )}
+                      {issue.selector && (
+                        <span className="font-mono bg-slate-100 px-2 py-1 rounded">
+                          {issue.selector}
+                        </span>
+                      )}
                     </div>
 
-                    {issue.code_snippet && (
-                      <div className="mt-4">
-                        <p className="text-sm font-medium text-slate-900 mb-2">Current Code:</p>
-                        <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded-lg overflow-x-auto">
-                          <code>{issue.code_snippet}</code>
-                        </pre>
-                      </div>
-                    )}
+                    {/* Recommended Fix */}
+                    <div className="mt-4">
+                      <p className="text-sm font-medium text-slate-900 mb-2">Recommended Fix:</p>
+                      <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        {issue.recommended_fix}
+                      </p>
+                    </div>
 
-                    {issue.fixed_code && (
-                      <div className="mt-4">
-                        <p className="text-sm font-medium text-slate-900 mb-2">Suggested Fix:</p>
-                        <pre className="text-xs bg-green-900 text-green-100 p-3 rounded-lg overflow-x-auto">
-                          <code>{issue.fixed_code}</code>
-                        </pre>
-                      </div>
-                    )}
+                    {/* Code Comparison */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      {issue.code_snippet && (
+                        <div>
+                          <p className="text-sm font-medium text-slate-900 mb-2">Current Code:</p>
+                          <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded-lg overflow-x-auto border border-slate-700">
+                            <code>{issue.code_snippet}</code>
+                          </pre>
+                        </div>
+                      )}
+
+                      {issue.fixed_code && (
+                        <div>
+                          <p className="text-sm font-medium text-slate-900 mb-2">Suggested Fix:</p>
+                          <pre className="text-xs bg-green-900 text-green-100 p-3 rounded-lg overflow-x-auto border border-green-700">
+                            <code>{issue.fixed_code}</code>
+                          </pre>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
       </div>
 
+      {/* Generate PR Modal */}
       {showPRModal && (
         <GeneratePRModal
           scan={scan}
