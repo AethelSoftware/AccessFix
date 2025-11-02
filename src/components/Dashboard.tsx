@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Shield, Plus, LogOut } from 'lucide-react';
+import { Shield, Plus, LogOut, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, Scan, Issue } from '../lib/supabase';
 import { NewScanModal } from './NewScanModal';
 import { ScansList } from './ScansList';
 import { ScanDetails } from './ScanDetails';
-
 
 export function Dashboard() {
   const { user, signOut } = useAuth();
@@ -14,6 +13,7 @@ export function Dashboard() {
   const [showNewScanModal, setShowNewScanModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [issuesByScan, setIssuesByScan] = useState<Record<string, Issue[]>>({});
+  const [generatingPdf, setGeneratingPdf] = useState<string | null>(null);
 
   const loadScans = async () => {
     try {
@@ -60,6 +60,41 @@ export function Dashboard() {
       await signOut();
     } catch (error) {
       console.error('Error signing out:', error);
+    }
+  };
+
+  const generatePdfReport = async (scanId: string) => {
+    try {
+      setGeneratingPdf(scanId);
+      
+      const { data, error } = await supabase.functions.invoke('generate-pdf-report', {
+        body: { scan_id: scanId }
+      });
+
+      if (error) throw error;
+
+      // Update the scan with the new PDF URL
+      await loadScans();
+      
+      // Download the PDF
+      if (data.pdf_report_url) {
+        window.open(data.pdf_report_url, '_blank');
+      }
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF report. Please try again.');
+    } finally {
+      setGeneratingPdf(null);
+    }
+  };
+
+  const downloadPdfReport = (scan: Scan) => {
+    if (scan.pdf_report_url) {
+      // If PDF already exists, download it directly
+      window.open(scan.pdf_report_url, '_blank');
+    } else {
+      // Generate new PDF
+      generatePdfReport(scan.id);
     }
   };
 
@@ -149,6 +184,8 @@ export function Dashboard() {
                   scan={selectedScan}
                   issues={issuesByScan[selectedScan.id]}
                   onScanUpdated={loadScans}
+                  onDownloadPdf={() => downloadPdfReport(selectedScan)}
+                  isGeneratingPdf={generatingPdf === selectedScan.id}
                 />
               ) : (
                 <div className="rounded-lg border border-neutral-200 bg-white p-12 text-center shadow-sm">
