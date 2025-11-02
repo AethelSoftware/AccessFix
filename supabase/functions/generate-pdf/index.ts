@@ -4,7 +4,8 @@ import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 serve(async (req) => {
@@ -44,42 +45,155 @@ serve(async (req) => {
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const codeFont = await pdfDoc.embedFont(StandardFonts.Courier);
 
-    let y = height - 50;
+    const margin = 50;
+    const maxWidth = width - (margin * 2);
+    let y = height - margin;
 
-    page.drawText(`Accessibility Scan Report for: ${scan.name}`, {
-      x: 50,
+    // Title
+    page.drawText(`Accessibility Scan Report`, {
+      x: margin,
       y,
       font: boldFont,
       size: 24,
+      color: rgb(0, 0, 0),
+    });
+    y -= 40;
+
+    // Scan name
+    page.drawText(`Scan: ${scan.name}`, {
+      x: margin,
+      y,
+      font: boldFont,
+      size: 14,
+      color: rgb(0, 0, 0),
+    });
+    y -= 20;
+
+    // URL
+    const url = scan.target_url || scan.file_name || 'N/A';
+    page.drawText(`URL: ${url}`, {
+      x: margin,
+      y,
+      font: font,
+      size: 10,
+      color: rgb(0, 0, 0),
+    });
+    y -= 20;
+
+    // Score
+    page.drawText(`Accessibility Score: ${scan.rating}/100 (${scan.grade})`, {
+      x: margin,
+      y,
+      font: boldFont,
+      size: 12,
+      color: rgb(0, 0, 0),
     });
     y -= 30;
-    
-    page.drawText(`URL: ${scan.target_url || scan.file_name}`, {
-        x: 50,
-        y,
-        font: font,
-        size: 12,
-      });
-      y -= 20;
 
-    page.drawText(`Score: ${scan.rating}/100 (${scan.grade})`, {
-        x: 50,
+    // Issues header
+    page.drawText(`Issues Found (${issues.length}):`, {
+      x: margin,
+      y,
+      font: boldFont,
+      size: 16,
+      color: rgb(0, 0, 0),
+    });
+    y -= 30;
+
+    // Issues list
+    for (const issue of issues) {
+      // Check if we need a new page
+      if (y < 100) {
+        const newPage = pdfDoc.addPage();
+        const { height: newHeight } = newPage.getSize();
+        y = newHeight - margin;
+        
+        // Add header to new page
+        newPage.drawText(`Accessibility Scan Report - ${scan.name}`, {
+          x: margin,
+          y,
+          font: boldFont,
+          size: 12,
+          color: rgb(0.5, 0.5, 0.5),
+        });
+        y -= 30;
+      }
+
+      // Severity and title
+      const severityColor = getSeverityColor(issue.severity);
+      page.drawText(`[${issue.severity.toUpperCase()}]`, {
+        x: margin,
         y,
         font: boldFont,
-        size: 16,
+        size: 12,
+        color: severityColor,
       });
-      y -= 30;
+      
+      const severityWidth = boldFont.widthOfTextAtSize(`[${issue.severity.toUpperCase()}]`, 12);
+      page.drawText(issue.title, {
+        x: margin + severityWidth + 5,
+        y,
+        font: boldFont,
+        size: 12,
+        color: rgb(0, 0, 0),
+      });
+      y -= 18;
 
-    for (const issue of issues) {
-        y -= 20;
-        page.drawText(`[${issue.severity}] ${issue.title}`, { x: 50, y, font: boldFont, size: 12 });
-        y -= 15;
-        page.drawText(issue.description, { x: 50, y, font, size: 10, maxWidth: width - 100, lineHeight: 12 });
-        y -= 30;
-        page.drawText(`Selector: ${issue.selector}`, {x: 50, y, font: codeFont, size: 8 });
-        y -= 20;
+      // Description
+      const descriptionLines = wrapText(issue.description, font, 10, maxWidth);
+      for (const line of descriptionLines) {
+        if (y < 80) {
+          const newPage = pdfDoc.addPage();
+          const { height: newHeight } = newPage.getSize();
+          y = newHeight - margin;
+        }
+        page.drawText(line, {
+          x: margin,
+          y,
+          font: font,
+          size: 10,
+          color: rgb(0, 0, 0),
+        });
+        y -= 12;
+      }
+      y -= 8;
+
+      // Selector
+      if (issue.selector) {
+        if (y < 80) {
+          const newPage = pdfDoc.addPage();
+          const { height: newHeight } = newPage.getSize();
+          y = newHeight - margin;
+        }
+        page.drawText(`Selector:`, {
+          x: margin,
+          y,
+          font: font,
+          size: 9,
+          color: rgb(0.4, 0.4, 0.4),
+        });
+        y -= 12;
+        
+        const selectorLines = wrapText(issue.selector, codeFont, 8, maxWidth);
+        for (const line of selectorLines) {
+          if (y < 80) {
+            const newPage = pdfDoc.addPage();
+            const { height: newHeight } = newPage.getSize();
+            y = newHeight - margin;
+          }
+          page.drawText(line, {
+            x: margin,
+            y,
+            font: codeFont,
+            size: 8,
+            color: rgb(0.2, 0.2, 0.2),
+          });
+          y -= 10;
+        }
+      }
+
+      y -= 20; // Space between issues
     }
-
 
     // 3. Save PDF to buffer
     const pdfBytes = await pdfDoc.save();
@@ -113,9 +227,53 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
+    console.error('PDF generation error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,
     });
   }
 });
+
+// Helper function to wrap text
+function wrapText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
+  const lines: string[] = [];
+  const words = text.split(' ');
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+    if (testWidth <= maxWidth) {
+      currentLine = testLine;
+    } else {
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      currentLine = word;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+// Helper function to get severity color
+function getSeverityColor(severity: string) {
+  switch (severity.toLowerCase()) {
+    case 'critical':
+      return rgb(0.8, 0.1, 0.1);
+    case 'high':
+      return rgb(0.9, 0.5, 0.1);
+    case 'medium':
+      return rgb(0.9, 0.7, 0.1);
+    case 'low':
+      return rgb(0.2, 0.5, 0.8);
+    default:
+      return rgb(0.5, 0.5, 0.5);
+  }
+}
