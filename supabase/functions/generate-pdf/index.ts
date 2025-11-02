@@ -37,6 +37,34 @@ serve(async (req) => {
 
     if (issuesError) throw issuesError;
 
+    // Calculate score if not provided
+    const calculateAccessibilityScore = (issues: any[]) => {
+      if (issues.length === 0) return { rating: 100, grade: 'A' };
+      
+      const criticalCount = issues.filter((i: any) => i.severity === 'critical').length;
+      const warningCount = issues.filter((i: any) => i.severity === 'warning').length;
+      const infoCount = issues.filter((i: any) => i.severity === 'info').length;
+      
+      let score = 100;
+      score -= criticalCount * 10;
+      score -= warningCount * 5;
+      score -= infoCount * 2;
+      
+      score = Math.max(0, Math.min(100, score));
+      
+      let grade = 'A';
+      if (score < 90) grade = 'B';
+      if (score < 80) grade = 'C';
+      if (score < 70) grade = 'D';
+      if (score < 60) grade = 'F';
+      
+      return { rating: Math.round(score), grade };
+    };
+
+    const scoreData = scan.rating && scan.grade 
+      ? { rating: scan.rating, grade: scan.grade }
+      : calculateAccessibilityScore(issues || []);
+
     // 2. Create PDF
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage();
@@ -81,7 +109,7 @@ serve(async (req) => {
     y -= 20;
 
     // Score
-    page.drawText(`Accessibility Score: ${scan.rating}/100 (${scan.grade})`, {
+    page.drawText(`Accessibility Score: ${scoreData.rating}/100 (${scoreData.grade})`, {
       x: margin,
       y,
       font: boldFont,
@@ -90,109 +118,236 @@ serve(async (req) => {
     });
     y -= 30;
 
-    // Issues header
-    page.drawText(`Issues Found (${issues.length}):`, {
+    // Scan date
+    const scanDate = new Date(scan.created_at).toLocaleDateString();
+    page.drawText(`Scan Date: ${scanDate}`, {
       x: margin,
       y,
-      font: boldFont,
-      size: 16,
-      color: rgb(0, 0, 0),
+      font: font,
+      size: 10,
+      color: rgb(0.4, 0.4, 0.4),
     });
     y -= 30;
 
-    // Issues list
-    for (const issue of issues) {
-      // Check if we need a new page
-      if (y < 100) {
-        const newPage = pdfDoc.addPage();
-        const { height: newHeight } = newPage.getSize();
-        y = newHeight - margin;
-        
-        // Add header to new page
-        newPage.drawText(`Accessibility Scan Report - ${scan.name}`, {
+    // Summary
+    page.drawText(`Summary:`, {
+      x: margin,
+      y,
+      font: boldFont,
+      size: 14,
+      color: rgb(0, 0, 0),
+    });
+    y -= 20;
+
+    const totalIssues = issues?.length || 0;
+    const criticalCount = issues?.filter((i: any) => i.severity === 'critical').length || 0;
+    const warningCount = issues?.filter((i: any) => i.severity === 'warning').length || 0;
+    const infoCount = issues?.filter((i: any) => i.severity === 'info').length || 0;
+
+    page.drawText(`• Total Issues: ${totalIssues}`, {
+      x: margin + 10,
+      y,
+      font: font,
+      size: 10,
+      color: rgb(0, 0, 0),
+    });
+    y -= 15;
+
+    page.drawText(`• Critical: ${criticalCount}`, {
+      x: margin + 10,
+      y,
+      font: font,
+      size: 10,
+      color: rgb(0.8, 0.1, 0.1),
+    });
+    y -= 15;
+
+    page.drawText(`• Warnings: ${warningCount}`, {
+      x: margin + 10,
+      y,
+      font: font,
+      size: 10,
+      color: rgb(0.9, 0.5, 0.1),
+    });
+    y -= 15;
+
+    page.drawText(`• Info: ${infoCount}`, {
+      x: margin + 10,
+      y,
+      font: font,
+      size: 10,
+      color: rgb(0.2, 0.5, 0.8),
+    });
+    y -= 30;
+
+    // Issues header
+    if (issues && issues.length > 0) {
+      page.drawText(`Issues Found (${issues.length}):`, {
+        x: margin,
+        y,
+        font: boldFont,
+        size: 16,
+        color: rgb(0, 0, 0),
+      });
+      y -= 30;
+
+      // Issues list
+      for (const issue of issues) {
+        // Check if we need a new page
+        if (y < 150) {
+          const newPage = pdfDoc.addPage();
+          const { height: newHeight } = newPage.getSize();
+          y = newHeight - margin;
+          
+          // Add header to new page
+          newPage.drawText(`Accessibility Scan Report - ${scan.name} (Continued)`, {
+            x: margin,
+            y,
+            font: boldFont,
+            size: 12,
+            color: rgb(0.5, 0.5, 0.5),
+          });
+          y -= 30;
+        }
+
+        // Severity and title
+        const severityColor = getSeverityColor(issue.severity);
+        page.drawText(`[${issue.severity.toUpperCase()}]`, {
           x: margin,
           y,
           font: boldFont,
           size: 12,
-          color: rgb(0.5, 0.5, 0.5),
+          color: severityColor,
         });
-        y -= 30;
-      }
-
-      // Severity and title
-      const severityColor = getSeverityColor(issue.severity);
-      page.drawText(`[${issue.severity.toUpperCase()}]`, {
-        x: margin,
-        y,
-        font: boldFont,
-        size: 12,
-        color: severityColor,
-      });
-      
-      const severityWidth = boldFont.widthOfTextAtSize(`[${issue.severity.toUpperCase()}]`, 12);
-      page.drawText(issue.title, {
-        x: margin + severityWidth + 5,
-        y,
-        font: boldFont,
-        size: 12,
-        color: rgb(0, 0, 0),
-      });
-      y -= 18;
-
-      // Description
-      const descriptionLines = wrapText(issue.description, font, 10, maxWidth);
-      for (const line of descriptionLines) {
-        if (y < 80) {
-          const newPage = pdfDoc.addPage();
-          const { height: newHeight } = newPage.getSize();
-          y = newHeight - margin;
-        }
-        page.drawText(line, {
-          x: margin,
-          y,
-          font: font,
-          size: 10,
-          color: rgb(0, 0, 0),
-        });
-        y -= 12;
-      }
-      y -= 8;
-
-      // Selector
-      if (issue.selector) {
-        if (y < 80) {
-          const newPage = pdfDoc.addPage();
-          const { height: newHeight } = newPage.getSize();
-          y = newHeight - margin;
-        }
-        page.drawText(`Selector:`, {
-          x: margin,
-          y,
-          font: font,
-          size: 9,
-          color: rgb(0.4, 0.4, 0.4),
-        });
-        y -= 12;
         
-        const selectorLines = wrapText(issue.selector, codeFont, 8, maxWidth);
-        for (const line of selectorLines) {
+        const severityWidth = boldFont.widthOfTextAtSize(`[${issue.severity.toUpperCase()}]`, 12);
+        const titleLines = wrapText(issue.title, boldFont, 12, maxWidth - severityWidth - 5);
+        
+        if (titleLines.length > 0) {
+          page.drawText(titleLines[0], {
+            x: margin + severityWidth + 5,
+            y,
+            font: boldFont,
+            size: 12,
+            color: rgb(0, 0, 0),
+          });
+          y -= 15;
+        }
+
+        // Description
+        if (issue.description) {
+          const descriptionLines = wrapText(issue.description, font, 10, maxWidth);
+          for (const line of descriptionLines) {
+            if (y < 100) {
+              const newPage = pdfDoc.addPage();
+              const { height: newHeight } = newPage.getSize();
+              y = newHeight - margin;
+            }
+            page.drawText(line, {
+              x: margin,
+              y,
+              font: font,
+              size: 10,
+              color: rgb(0, 0, 0),
+            });
+            y -= 12;
+          }
+          y -= 8;
+        }
+
+        // Category and WCAG
+        if (issue.category || issue.wcag_criteria) {
+          let infoText = '';
+          if (issue.category) infoText += `Category: ${issue.category}`;
+          if (issue.wcag_criteria) infoText += `${infoText ? ' | ' : ''}WCAG: ${issue.wcag_criteria}`;
+          
           if (y < 80) {
             const newPage = pdfDoc.addPage();
             const { height: newHeight } = newPage.getSize();
             y = newHeight - margin;
           }
-          page.drawText(line, {
+          
+          page.drawText(infoText, {
             x: margin,
             y,
-            font: codeFont,
-            size: 8,
-            color: rgb(0.2, 0.2, 0.2),
+            font: font,
+            size: 9,
+            color: rgb(0.4, 0.4, 0.4),
           });
-          y -= 10;
+          y -= 15;
         }
-      }
 
-      y -= 20; // Space between issues
+        // Recommended fix
+        if (issue.recommended_fix) {
+          if (y < 100) {
+            const newPage = pdfDoc.addPage();
+            const { height: newHeight } = newPage.getSize();
+            y = newHeight - margin;
+          }
+          
+          page.drawText(`Recommended Fix:`, {
+            x: margin,
+            y,
+            font: boldFont,
+            size: 10,
+            color: rgb(0, 0, 0),
+          });
+          y -= 12;
+          
+          const fixLines = wrapText(issue.recommended_fix, font, 9, maxWidth);
+          for (const line of fixLines) {
+            if (y < 80) {
+              const newPage = pdfDoc.addPage();
+              const { height: newHeight } = newPage.getSize();
+              y = newHeight - margin;
+            }
+            page.drawText(line, {
+              x: margin,
+              y,
+              font: font,
+              size: 9,
+              color: rgb(0, 0, 0),
+            });
+            y -= 10;
+          }
+        }
+
+        // Selector
+        if (issue.selector) {
+          if (y < 80) {
+            const newPage = pdfDoc.addPage();
+            const { height: newHeight } = newPage.getSize();
+            y = newHeight - margin;
+          }
+          
+          const selectorLines = wrapText(`Selector: ${issue.selector}`, codeFont, 8, maxWidth);
+          for (const line of selectorLines) {
+            if (y < 80) {
+              const newPage = pdfDoc.addPage();
+              const { height: newHeight } = newPage.getSize();
+              y = newHeight - margin;
+            }
+            page.drawText(line, {
+              x: margin,
+              y,
+              font: codeFont,
+              size: 8,
+              color: rgb(0.2, 0.2, 0.2),
+            });
+            y -= 9;
+          }
+        }
+
+        y -= 20; // Space between issues
+      }
+    } else {
+      page.drawText('No issues found! 🎉', {
+        x: margin,
+        y,
+        font: boldFont,
+        size: 14,
+        color: rgb(0, 0.6, 0),
+      });
     }
 
     // 3. Save PDF to buffer
@@ -217,12 +372,24 @@ serve(async (req) => {
     // 6. Update scan with PDF URL
     const { error: updateError } = await supabaseAdmin
       .from("scans")
-      .update({ pdf_report_url: publicUrlData.publicUrl })
+      .update({ 
+        pdf_report_url: publicUrlData.publicUrl,
+        rating: scoreData.rating,
+        grade: scoreData.grade,
+        total_issues: totalIssues,
+        critical_count: criticalCount,
+        warning_count: warningCount,
+        info_count: infoCount
+      })
       .eq("id", scan_id);
 
     if (updateError) throw updateError;
 
-    return new Response(JSON.stringify({ pdf_report_url: publicUrlData.publicUrl }), {
+    return new Response(JSON.stringify({ 
+      pdf_report_url: publicUrlData.publicUrl,
+      rating: scoreData.rating,
+      grade: scoreData.grade 
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
@@ -237,6 +404,8 @@ serve(async (req) => {
 
 // Helper function to wrap text
 function wrapText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
+  if (!text) return [];
+  
   const lines: string[] = [];
   const words = text.split(' ');
   let currentLine = '';
@@ -269,9 +438,13 @@ function getSeverityColor(severity: string) {
       return rgb(0.8, 0.1, 0.1);
     case 'high':
       return rgb(0.9, 0.5, 0.1);
+    case 'warning':
+      return rgb(0.9, 0.7, 0.1);
     case 'medium':
       return rgb(0.9, 0.7, 0.1);
     case 'low':
+      return rgb(0.2, 0.5, 0.8);
+    case 'info':
       return rgb(0.2, 0.5, 0.8);
     default:
       return rgb(0.5, 0.5, 0.5);
