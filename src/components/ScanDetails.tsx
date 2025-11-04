@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, AlertTriangle, Info, GitPullRequest, ExternalLink, Code, Download } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, GitPullRequest, ExternalLink, Code, Download, Trash2 } from 'lucide-react';
 import { Scan, Issue, supabase } from '../lib/supabase';
 import { GeneratePRModal } from './GeneratePRModal';
 
@@ -10,6 +10,7 @@ interface ScanDetailsProps {
   onDownloadPdf: () => void;
   isGeneratingPdf: boolean;
   onPdfSuccess?: () => void;
+  onDeleteScan?: () => void;
 }
 
 export function ScanDetails({ 
@@ -18,13 +19,15 @@ export function ScanDetails({
   onScanUpdated, 
   onDownloadPdf, 
   isGeneratingPdf,
-  onPdfSuccess 
+  onPdfSuccess,
+  onDeleteScan
 }: ScanDetailsProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [showPRModal, setShowPRModal] = useState(false);
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
+  const [generatingPR, setGeneratingPR] = useState(false);
 
   // Calculate score if not provided
   const calculateAccessibilityScore = (issues: Issue[]) => {
@@ -50,8 +53,8 @@ export function ScanDetails({
     return { rating: Math.round(score), grade };
   };
 
-  const scoreData = scan.rating && scan.grade 
-    ? { rating: scan.rating, grade: scan.grade }
+  const scoreData = scan.accessibility_score && scan.grade 
+    ? { rating: scan.accessibility_score, grade: scan.grade }
     : calculateAccessibilityScore(issues);
 
   // Load issues whenever scan changes OR initialIssues are provided
@@ -82,11 +85,6 @@ export function ScanDetails({
     }
   }, [scan.id, initialIssues]);
 
-  // Debug: Log whenever issues state changes
-  useEffect(() => {
-    console.log('🔄 Issues state updated:', issues.length, 'issues');
-  }, [issues]);
-
   const loadIssues = async () => {
     setLoading(true);
     try {
@@ -111,6 +109,33 @@ export function ScanDetails({
       console.error('Error loading issues:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGeneratePR = async (githubToken: string, githubRepo: string) => {
+    try {
+      setGeneratingPR(true);
+      
+      const { data, error } = await supabase.functions.invoke('generate-pr', {
+        body: { 
+          scanId: scan.id,
+          githubToken: githubToken,
+          githubRepo: githubRepo
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        alert(`✅ Pull request created successfully!\n\nPR #${data.prNumber}: ${data.prUrl}`);
+        onScanUpdated(); // Refresh to show PR URL
+      }
+    } catch (error) {
+      console.error('Error generating PR:', error);
+      alert(`Error creating pull request: ${error.message}`);
+    } finally {
+      setGeneratingPR(false);
+      setShowPRModal(false);
     }
   };
 
@@ -198,9 +223,26 @@ export function ScanDetails({
                     {scan.file_name}
                   </span>
                 )}
+                {scan.github_repo && (
+                  <span className="flex items-center gap-1 text-slate-500">
+                    <GitPullRequest className="w-4 h-4" />
+                    {scan.github_repo}
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {/* Delete Button */}
+              {onDeleteScan && (
+                <button
+                  onClick={onDeleteScan}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Scan
+                </button>
+              )}
+
               {/* PDF Download Button */}
               <button
                 onClick={onDownloadPdf}
@@ -215,10 +257,11 @@ export function ScanDetails({
               {scan.github_repo && issues.length > 0 && (
                 <button
                   onClick={() => setShowPRModal(true)}
-                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                  disabled={generatingPR}
+                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-green-700 disabled:bg-green-400 transition-colors"
                 >
                   <GitPullRequest className="w-5 h-5" />
-                  Generate PR
+                  {generatingPR ? 'Creating PR...' : 'Generate PR'}
                 </button>
               )}
             </div>
@@ -405,7 +448,8 @@ export function ScanDetails({
         <GeneratePRModal
           scan={scan}
           onClose={() => setShowPRModal(false)}
-          onSuccess={onScanUpdated}
+          onGenerate={handleGeneratePR}
+          isLoading={generatingPR}
         />
       )}
     </>
