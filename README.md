@@ -42,5 +42,3 @@ Accessibility is often an afterthought in development. I wanted to create a tool
 - Maintaining the scanning engine required more effort than anticipated
 - Lighthouse is much better and more thorough.
 ---
-
-*Not every project ships. But every project teaches you something.* ✌️
