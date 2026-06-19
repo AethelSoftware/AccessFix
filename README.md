@@ -12,7 +12,7 @@ I built a tool to help developers catch accessibility issues early. It scans web
 
 ## 🔗 Project Link
 
-**[AccessFix]((https://accessfix.vercel.app/))** — The site is still up, but authentication and scanning functionality have been disabled.
+[**[AccessFix]((https://accessfix.vercel.app/))**](https://accessfix.vercel.app/) — The site is still up, but authentication and scanning functionality have been disabled.
 
 ## ✨ Features (What It Did)
 
